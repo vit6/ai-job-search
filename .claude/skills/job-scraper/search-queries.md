@@ -15,8 +15,21 @@ The `site:` query templates in this file are the **WebSearch fallback** — for 
 Primary (your market's job boards - scaffold one with `/add-portal`):
 - **[YOUR_JOB_BOARD]** - your market's largest general job board
 - **linkedin.com/jobs** - LinkedIn job listings (filter: [YOUR_COUNTRY] / [YOUR_CITY]); also covered by `linkedin-search` CLI
+- **hirist.tech** - India IT/tech jobs; also covered by the `hirist-search` CLI (no `site:` needed for this one, same as linkedin-search)
 - **[YOUR_INDUSTRY_JOB_BOARD]** - a niche/industry board for your field (optional)
 - **[YOUR_ADDITIONAL_JOB_BOARD]** - another major board for your market (optional)
+
+India, WebSearch-fallback only (no dedicated CLI - see below for why):
+- **naukri.com** - India's largest general job board
+- **in.indeed.com** - Indeed India
+- **foundit.in** - Foundit (formerly Monster India)
+
+> These three explicitly disallow Claude-branded crawlers (`Claude-User`, `claudebot`,
+> `ClaudeBot`) in `robots.txt` on exactly the search/listing paths a dedicated CLI would
+> need (checked 2026-09-17 when `/add-portal` was run for the Indian market). No portal
+> CLI was built for them for that reason - they're `site:` search-engine queries below
+> instead, which don't fetch the portals directly. Re-check `robots.txt` before ever
+> reconsidering a CLI for these.
 
 Secondary (company career pages via Google):
 - Direct Google searches with `site:` filters for known target companies
@@ -65,6 +78,19 @@ Wider net for general technical roles.
 site:[YOUR_JOB_BOARD] [YOUR_KEY_SKILL] developer [YOUR_CITY]
 site:linkedin.com/jobs "[YOUR_KEY_SKILL] developer" [YOUR_CITY]
 site:[YOUR_JOB_BOARD] "technical consultant" [YOUR_DOMAIN] [YOUR_CITY]
+```
+
+### India WebSearch-fallback queries (naukri.com / in.indeed.com / foundit.in)
+
+Use these `site:` templates for the three India boards with no dedicated CLI (see the
+Search Sites note above for why). Substitute your actual role/skill/city once `/setup`
+has filled in your profile - same placeholder convention as the categories above.
+
+```
+site:naukri.com "[YOUR_PRIMARY_JOB_TITLE_1]" [YOUR_CITY]
+site:in.indeed.com "[YOUR_PRIMARY_JOB_TITLE_1]" [YOUR_CITY]
+site:foundit.in "[YOUR_PRIMARY_JOB_TITLE_1]" [YOUR_CITY]
+site:naukri.com "[YOUR_KEY_SKILL]" [YOUR_CITY]
 ```
 
 ## Location Filter
