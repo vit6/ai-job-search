@@ -15,6 +15,15 @@ per-file diff commands.
 
 ### Added
 
+- **Real Excel workbook integration tests for the salary converter**
+  (`tests/test_convert_salary_excel_integration.py`, `.github/workflows/ci.yml`) -
+  generate temporary `.xlsx` files and invoke the documented converter CLI,
+  checking multiple worksheets, metadata options, Unicode text, localized
+  numbers, and compatibility with salary lookup. A workbook without salary
+  headers must fail without creating an output file. CI installs `openpyxl`
+  across the Python matrix; local runs without this optional dependency skip
+  the two integration cases while retaining the existing dependency-free tests.
+
 - **`documents/projects/` portfolio ingestion in `/setup` (Path A)** (`documents/README.md`,
   `.claude/commands/setup.md`, `.claude/commands/reset.md`, `tests/test_setup_command.py`) -
   onboards project writeups, case studies, and documentation (`.md`, `.txt`, `.pdf`)
@@ -60,7 +69,96 @@ per-file diff commands.
   geometry. Tests use synthetic page geometry, so they need neither Poppler nor a
   LaTeX toolchain.
 
+### Changed
+
+- **`/add-template` keeps a registered template's intermediates in `build/`**
+  (#473, `.claude/commands/add-template.md`, `.gitignore`,
+  `tests/test_add_template_build_dir.py`) - the elicited compile command
+  now redirects intermediates (`.aux`, `.log`, ...) to a `build/` folder beside the source
+  and moves the PDF back, so Step 4's test-compile cleanup deletes one folder instead of
+  enumerating LaTeX extensions. The LaTeX command deletes the previous PDF first, so a
+  failed compile leaves no stale PDF for `/apply` to inspect. Toolchains with nothing to
+  redirect (`typst compile`) keep their command unchanged. The `ACTIVE-TEMPLATE` block now
+  tells `/apply` to run the command from the output directory and to delete `build/` in
+  its Step 5e cleanup. Stock templates are unchanged.
+
 ### Fixed
+
+- **`linkedin-search detail` no longer fetches an unrelated posting for a URL on another
+  host** - `normalizeId` took the first 6+-digit path segment from *any* URL, so a
+  Greenhouse or Lever apply link (the kind a posting's own page hands out, and what a user
+  pastes back into `detail`) was reduced to that number and the handler fetched
+  `jobPosting/<number>` from LinkedIn: whatever job carried that id came back, printed with
+  exit 0, or `NOT_FOUND` if none did - never an error about the input. Demonstrated by driving
+  the real handler with a stubbed fetch: `https://boards.greenhouse.io/acme/jobs/4567890`
+  requested `.../jobPosting/4567890`. Every other portal CLI rejects an off-host detail URL
+  with `BAD_ID` (the #447 shape); linkedin was the one still trusting the digits. URLs are
+  now parsed for real: a `linkedin.com` host (apex or any subdomain, scheme optional) plus a
+  `/jobs/view/<slug-><id>` path yields the id, and anything else - other hosts, look-alike and
+  userinfo hosts, a linkedin.com profile or search URL - exits 1 with the stderr-JSON
+  `BAD_ID` contract before any request. Bare ids, URNs, and slash-free title slugs are
+  unchanged. Pinned by four new `normalizeId` cases and a new `detail-input.test.ts` that
+  drives `runDetail` and the CLI with fetch stubbed; the off-host cases fail on the old
+  pattern.
+
+- **`/rank` tracker matching preserves Unicode company and role names**
+  (`tools/rank_state.py`, `tests/test_rank_state.py`) - ASCII-only normalization
+  collapsed distinct non-Latin roles to the same empty value and dropped
+  entirely non-Latin companies from tracker exclusions. Match using Unicode
+  case folding and NFC normalization, retaining letters, numbers, and combining
+  marks while continuing to ignore punctuation and spacing. CLI regressions
+  use the standard tracker header and cover distinct names, tracked matches,
+  equivalent accent encodings, and the existing ASCII matching behavior.
+
+- **The Python tools no longer crash on Windows when a posting, company, CV line or file
+  name falls outside the ANSI code page** (`tools/rank_state.py`, `tools/job_key.py`,
+  `tools/verify_pdf.py`, `tools/verify_layout.py`, `tools/convert_salary_excel.py`,
+  `salary_lookup.py`, `tests/test_tools_utf8_output.py`) - a piped stdout on Windows
+  defaults to the ANSI code page (cp1252 on most Western installs), and that is how Claude
+  Code runs every tool. `/rank`'s candidate listing printed titles and companies with
+  `ensure_ascii=False`, so a single Cyrillic, CJK, Devanagari, Polish or Turkish posting
+  ended the run with `UnicodeEncodeError` before any output reached the workflow; the key
+  audit, the salary lookup, the salary converter and the layout report failed the same way.
+  Each tool now switches stdout and stderr to UTF-8 at entry, which also stops Danish and
+  other Western accents from arriving as cp1252 bytes. The regression tests run every
+  tool in a child process with a cp1252 stdout forced through `PYTHONIOENCODING`, so the
+  Linux CI job reproduces the Windows failure; all seven fail without the fix. The
+  subprocess helpers in `tests/test_rank_state.py` and `tests/test_job_key.py` now decode
+  child output as UTF-8 to match.
+
+- **`/rank` rejects invalid score dimensions before updating an entry**
+  (`tools/rank_state.py`, `tests/test_rank_state.py`) - enforce the rubric's
+  inclusive 0-100 range and reject booleans, NaN, and infinities. Invalid results
+  now use the existing per-job error report, leaving the rejected entry intact
+  while valid results in the same batch are saved. CLI tests cover every score
+  dimension, oversized integers, boundary values, and fractional-score rounding.
+
+- **Distinct non-Latin company names no longer share the unknown-company job key**
+  (`tools/job_key.py`, `tests/test_job_key.py`) - when a non-empty company name
+  has no ASCII slug, derive its fallback from a hash of the normalized name.
+  Missing names retain `unknown-company`, and existing ASCII keys are unchanged.
+  CLI tests cover distinct companies, case and canonical Unicode equivalence,
+  and stable keys across posting URLs. Existing state is not rewritten; `/scrape`
+  already recognizes stored postings by URL regardless of their previous key.
+
+- **`/rank` tracker exclusion handles UTF-8 BOMs on reordered CSV headers**
+  (`tools/rank_state.py`, `tests/test_rank_state.py`) - when `company` or `role`
+  is the first column, a leading BOM becomes part of the header name and an
+  already-tracked application is selected for ranking again. Read with
+  `utf-8-sig` so both BOM-prefixed and plain UTF-8 trackers match correctly.
+  The standard `date`-first header already worked; regression coverage checks
+  all three column orders with and without a BOM.
+
+- **`verify_layout.py` no longer emits a `SyntaxWarning` on every run** (`tools/verify_layout.py`,
+  `tests/test_verify_layout.py`) - the module docstring names the macro whose absence triggers the
+  Poppler `-bbox` crash, `\hypersetup{pdftitle=...}`, and a bare `\h` in a non-raw docstring is an
+  invalid escape sequence. Python 3.12+ prints `SyntaxWarning: "\h" is an invalid escape sequence`
+  the first time the module is compiled (CPython gh-98401) - it shows up in this repo's own CI log,
+  and in the middle of `/apply` Step 5b's layout report. The 3.15 language reference still
+  documents the sequence as a `SyntaxWarning`, with a `SyntaxError` only in a future Python
+  version. Escaped in the docstring; the new `ToolsCompileWithoutWarnings` case compiles the
+  source of every `tools/*.py` with warnings captured and fails on the unescaped version, so the
+  next docstring that quotes a LaTeX macro is caught too.
 
 - **`/apply` Step 5b now actually runs the page-count check it claimed Step 5d ran**
   (`.claude/commands/apply.md`, `tests/test_apply_page_count.py`) - the 5b prose said

@@ -32,7 +32,7 @@ than inventing a layout failure. A broken extractor has two distinct causes: an 
 all, and Poppler 26.0x before 26.05 aborts `-bbox`/`-bbox-layout`/`-htmlmeta` on a PDF
 whose Info dictionary carries an empty string in any field - which `hyperref` writes for
 every field it does not set, so any `lualatex`/`pdflatex` document built with `hyperref`
-and no `\hypersetup{pdftitle=...}` triggers a real Poppler crashing on a legal PDF (#451).
+and no `\\hypersetup{pdftitle=...}` triggers a real Poppler crashing on a legal PDF (#451).
 Line height serves
 as a font-size proxy to spot section headings; left edge (xMin) separates bullet lines
 from entry headers.
@@ -304,7 +304,21 @@ def report(path: Path, pages: list[Page]) -> list[str]:
     return problems
 
 
+def _force_utf8_output() -> None:
+    """Write UTF-8 whatever the host's default encoding is.
+
+    A piped stdout on Windows defaults to the ANSI code page (cp1252 on most
+    Western installs), so printing a company, title or file name outside it
+    raised UnicodeEncodeError before the workflow saw any output.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)  # absent on a StringIO under test
+        if reconfigure:
+            reconfigure(encoding="utf-8")
+
+
 def main() -> int:
+    _force_utf8_output()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pdf", nargs="?", type=Path)
     args = ap.parse_args()
